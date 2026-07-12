@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
-import type { Category } from '@/types'
+import type { Category, CategoryLevel } from '@/types'
+import { useData } from '@/context/DataContext'
 import { childrenOf, resolvePath } from '@/lib/tree'
+import { nextColor } from '@/lib/colors'
 import { Sheet } from '@/components/ui/Sheet'
 import { Button } from '@/components/ui/Button'
 import { CategoryDot } from '@/components/ui/CategoryDot'
-import { ChevronRight, ChevronLeft, CheckIcon } from '@/components/ui/Icons'
+import { CategoryFormSheet, type CategoryFormValue } from '@/components/categories/CategoryFormSheet'
+import { ChevronRight, ChevronLeft, CheckIcon, PlusIcon } from '@/components/ui/Icons'
 
 interface CategoryPickerProps {
   open: boolean
@@ -15,14 +18,25 @@ interface CategoryPickerProps {
 
 /**
  * Drill-down picker across the 3 levels. Leaf rows select immediately; rows
- * with children drill in; a "Log to …" header lets you select a parent node.
+ * with children drill in; a "Log to …" header selects a parent node. New
+ * categories and subcategories can be created inline at any level.
  */
 export function CategoryPicker({ open, categories, onSelect, onClose }: CategoryPickerProps) {
+  const { createCategory } = useData()
   const [parentId, setParentId] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
 
   const colorFor = (cat: Category) => resolvePath(categories, cat.id)?.l1.color ?? cat.color
   const current = parentId ? categories.find((c) => c.id === parentId) ?? null : null
   const rows = useMemo(() => childrenOf(categories, parentId), [categories, parentId])
+
+  // You can add a child here at root (a new L1) or inside any node above L3.
+  const canAdd = current === null || current.level < 3
+  const addLevel: CategoryLevel = current ? ((current.level + 1) as CategoryLevel) : 1
+  const addColor = current
+    ? colorFor(current)
+    : nextColor(categories.filter((c) => c.level === 1).map((c) => c.color))
+  const addNoun = addLevel === 1 ? 'category' : addLevel === 2 ? 'subcategory' : 'item'
 
   const reset = () => setParentId(null)
   const close = () => {
@@ -34,39 +48,47 @@ export function CategoryPicker({ open, categories, onSelect, onClose }: Category
     reset()
   }
 
+  const handleCreate = async (value: CategoryFormValue) => {
+    const newId = await createCategory({
+      name: value.name,
+      level: addLevel,
+      parentId: current ? current.id : null,
+      color: addLevel === 1 ? value.color : addColor,
+      order: rows.length,
+    })
+    // Deepest level can't nest further — use it straight away. Otherwise drill
+    // in so you can add sub-items or "Log to" it.
+    if (addLevel === 3) pick(newId)
+    else setParentId(newId)
+  }
+
   return (
-    <Sheet open={open} onClose={close} title="Choose a category">
-      {current && (
-        <div className="mb-3 flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setParentId(current.parentId)}
-            className="!px-2"
-          >
-            <ChevronLeft width={18} height={18} />
-            Back
-          </Button>
-          <Button variant="subtle" size="sm" onClick={() => pick(current.id)} className="ml-auto">
-            <CheckIcon width={16} height={16} />
-            Log to “{current.name}”
-          </Button>
-        </div>
-      )}
+    <>
+      <Sheet open={open} onClose={close} title="Choose a category">
+        {current && (
+          <div className="mb-3 flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setParentId(current.parentId)}
+              className="!px-2"
+            >
+              <ChevronLeft width={18} height={18} />
+              Back
+            </Button>
+            <Button variant="subtle" size="sm" onClick={() => pick(current.id)} className="ml-auto">
+              <CheckIcon width={16} height={16} />
+              Log to “{current.name}”
+            </Button>
+          </div>
+        )}
 
-      {current && (
-        <p className="mb-2 truncate text-xs font-medium uppercase tracking-wide text-slate-500">
-          {pathBreadcrumb(categories, current.id)}
-        </p>
-      )}
+        {current && (
+          <p className="mb-2 truncate text-xs font-medium uppercase tracking-wide text-slate-500">
+            {pathBreadcrumb(categories, current.id)}
+          </p>
+        )}
 
-      {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-400">
-          {current
-            ? 'No sub-categories yet. Use “Log to …” above, or add some in Categories.'
-            : 'No categories yet. Add some in the Categories tab first.'}
-        </p>
-      ) : (
         <ul className="flex flex-col gap-1">
           {rows.map((cat) => {
             const kids = childrenOf(categories, cat.id)
@@ -91,9 +113,40 @@ export function CategoryPicker({ open, categories, onSelect, onClose }: Category
               </li>
             )
           })}
+
+          {canAdd && (
+            <li>
+              <button
+                onClick={() => setAddOpen(true)}
+                className="flex w-full items-center gap-3 rounded-xl border border-dashed border-slate-700 px-4 py-3 text-left text-brand-300 transition-colors hover:border-brand-500 hover:bg-brand-500/5"
+              >
+                <PlusIcon width={18} height={18} />
+                <span className="font-medium">
+                  New {addNoun}
+                  {current ? ` in “${current.name}”` : ''}
+                </span>
+              </button>
+            </li>
+          )}
         </ul>
-      )}
-    </Sheet>
+
+        {rows.length === 0 && !canAdd && (
+          <p className="py-6 text-center text-sm text-slate-400">
+            Nothing here yet. Use “Log to …” above.
+          </p>
+        )}
+      </Sheet>
+
+      <CategoryFormSheet
+        open={addOpen}
+        title={`New ${addNoun}${current ? ` in “${current.name}”` : ''}`}
+        showColor={addLevel === 1}
+        initial={{ name: '', color: addColor }}
+        submitLabel="Create"
+        onSubmit={handleCreate}
+        onClose={() => setAddOpen(false)}
+      />
+    </>
   )
 }
 
