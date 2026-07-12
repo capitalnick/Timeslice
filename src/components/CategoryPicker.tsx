@@ -89,27 +89,46 @@ export function CategoryPicker({ open, categories, onSelect, onClose }: Category
           </p>
         )}
 
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-1.5">
           {rows.map((cat) => {
             const kids = childrenOf(categories, cat.id)
-            const hasKids = kids.length > 0
+            const canOpen = cat.level < 3
             return (
               <li key={cat.id}>
-                <button
-                  onClick={() => (hasKids ? setParentId(cat.id) : pick(cat.id))}
-                  className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/40 px-4 py-3 text-left transition-colors hover:bg-slate-800"
-                >
-                  <CategoryDot color={colorFor(cat)} />
-                  <span className="flex-1 truncate font-medium text-slate-100">{cat.name}</span>
-                  {hasKids ? (
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
-                      {kids.length}
-                      <ChevronRight width={16} height={16} />
-                    </span>
-                  ) : (
+                {canOpen ? (
+                  // Non-leaf: open it to browse/add inside, or log to it directly.
+                  <div className="flex items-stretch gap-1.5">
+                    <button
+                      onClick={() => setParentId(cat.id)}
+                      className="flex flex-1 items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/40 px-4 py-3 text-left transition-colors hover:bg-slate-800"
+                    >
+                      <CategoryDot color={colorFor(cat)} />
+                      <span className="flex-1 truncate font-medium text-slate-100">{cat.name}</span>
+                      {kids.length > 0 && (
+                        <span className="text-xs text-slate-500">{kids.length}</span>
+                      )}
+                      <ChevronRight width={16} height={16} className="text-slate-500" />
+                    </button>
+                    <button
+                      onClick={() => pick(cat.id)}
+                      aria-label={`Log time to ${cat.name}`}
+                      title={`Log time to ${cat.name}`}
+                      className="flex w-12 shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-slate-800/40 text-slate-400 transition-colors hover:bg-brand-500/15 hover:text-brand-300"
+                    >
+                      <CheckIcon width={18} height={18} />
+                    </button>
+                  </div>
+                ) : (
+                  // Leaf (level 3): tap logs to it.
+                  <button
+                    onClick={() => pick(cat.id)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/40 px-4 py-3 text-left transition-colors hover:bg-slate-800"
+                  >
+                    <CategoryDot color={colorFor(cat)} />
+                    <span className="flex-1 truncate font-medium text-slate-100">{cat.name}</span>
                     <CheckIcon width={16} height={16} className="text-slate-600" />
-                  )}
-                </button>
+                  </button>
+                )}
               </li>
             )
           })}
@@ -130,9 +149,9 @@ export function CategoryPicker({ open, categories, onSelect, onClose }: Category
           )}
         </ul>
 
-        {rows.length === 0 && !canAdd && (
-          <p className="py-6 text-center text-sm text-slate-400">
-            Nothing here yet. Use “Log to …” above.
+        {current && rows.length === 0 && (
+          <p className="mt-2 text-center text-xs text-slate-500">
+            Nothing inside “{current.name}” yet — add one above, or use “Log to” to track time here.
           </p>
         )}
       </Sheet>
